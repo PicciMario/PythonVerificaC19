@@ -17,6 +17,7 @@ from urllib.request import urlopen
 import urllib
 import OpenSSL.crypto
 import sys
+import os
 
 from cryptography import x509
 from cryptography.utils import int_to_bytes
@@ -39,8 +40,16 @@ from cryptography.hazmat.backends import default_backend
 
 import datetime
 
+# Creazione cartella temporanea (se non esiste)
+tempdir = "./tmp"
+certs_file = os.path.join(tempdir, "certs.txt")
+valid_cert_keys_file = os.path.join(tempdir, "valid_cert_keys.txt")
+settings_temp_file = os.path.join(tempdir, "settings.txt")
+if (not os.path.isdir(tempdir)):
+	os.makedirs('./tmp')
+
 # Lettura QR Code
-filename = "napoleon.jpg"
+filename = "mario.png"
 print(f"\nAnalisi file: {filename}")
 img = cv2.imread(filename)
 gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -138,6 +147,19 @@ while True:
         else:
               print(f"Tipo chiave sconosciuto {pub.__class__.__name__}).")          
 
+# Salva file con lista certificati validi
+with open(certs_file, "w", encoding="utf-8") as f:
+    for kid, cert in x509_collection.items():
+
+        iss = cert.get_issuer().get_components()
+        c = [(x.decode('UTF-8'), y.decode('UTF-8')) for (x,y) in iss if x.decode('UTF-8') == "C"]
+        if (c): c = c[0][1]
+        cn = [(x.decode('UTF-8'), y.decode('UTF-8')) for (x,y) in iss if x.decode('UTF-8') == "CN"]
+        if (cn): cn = cn[0][1]
+        o = [(x.decode('UTF-8'), y.decode('UTF-8')) for (x,y) in iss if x.decode('UTF-8') == "O"]
+        if (o): o = o[0][1]
+
+        f.write(f'KID: {kid} Country: {c} Common name: {cn} Organization: {o}\n')
 
 # Trova chiave corretta per certificato
 kid = b64encode(cose_message.get_attr(KID)).decode('ASCII')
@@ -182,14 +204,24 @@ if (kid not in valid_list):
 else:
    	print("Certificato valido")
 
+# Salva file con lista chiavi certificati valide
+with open(valid_cert_keys_file, "w", encoding="utf-8") as f:
+    for key in valid_list:
+        f.write(f'{key}\n')
+
 # Verifica lsta revoca certificati
 settings_url = 'https://get.dgc.gov.it/v1/dgc/settings'
 revoked_list =[]
 
 with urlopen(settings_url) as settings_file:
     settings = settings_file.read()
+
+    # Salva file con settings
+    with open(settings_temp_file, "w", encoding="utf-8") as f:
+        f.write(settings.decode('UTF-8'))    
+
     settings = json.loads(settings.decode('UTF-8'))
-    
+
     revoked_data = [x for x in settings if x['name'] == 'black_list_uvci']    
     if (revoked_data): revoked_list = revoked_data[0]['value'].split(';')
 
